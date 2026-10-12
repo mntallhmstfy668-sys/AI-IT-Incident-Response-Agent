@@ -1,69 +1,78 @@
-
-from typing import Optional, Literal
+﻿from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
-class IncidentReport(BaseModel):
-    """Structured information about an IT incident."""
+IncidentCategory = Literal[
+    "network",
+    "account",
+    "device",
+    "vpn",
+    "security",
+    "other",
+]
 
-    incident_id: str = Field(
-        description="Unique identifier for the incident"
-    )
-    description: str = Field(
-        min_length=1,
-        description="Description of the reported IT problem"
-    )
-    category: Literal[
-        "network",
-        "vpn",
-        "account",
-        "device",
-        "software",
-        "security",
-        "other",
-    ] = Field(
-        description="Category that best describes the incident"
-    )
-    priority: Literal["low", "medium", "high", "critical"] = Field(
-        description="Severity and urgency of the incident"
-    )
-    affected_service: Optional[str] = Field(
-        default=None,
-        description="IT service affected by the incident, if known"
-    )
+IncidentPriority = Literal[
+    "low",
+    "medium",
+    "high",
+    "critical",
+]
+
+
+class IncidentReport(BaseModel):
+    incident_id: str = Field(min_length=1, max_length=50)
+    description: str = Field(min_length=5, max_length=2000)
+    category: IncidentCategory = "other"
+    priority: IncidentPriority = "medium"
+    affected_user: str = "unknown"
 
 
 class TriageResult(BaseModel):
-    """Structured result produced during incident triage."""
+    incident_id: str
+    category: IncidentCategory
+    priority: IncidentPriority
+    summary: str
+    requires_human: bool
+    recommended_action: str
+    confidence: float = Field(ge=0, le=1)
 
-    category: Literal[
-        "network",
-        "vpn",
-        "account",
-        "device",
-        "software",
-        "security",
-        "other",
-    ] = Field(
-        description="Classified category of the incident"
+
+class DiagnosticResult(BaseModel):
+    incident_id: str
+    category: IncidentCategory
+    checks: list[str] = Field(default_factory=list)
+    findings: list[str] = Field(default_factory=list)
+    recommended_next_step: str
+    automated_changes_performed: bool = False
+
+
+class TroubleshootingResult(BaseModel):
+    incident_id: str
+    status: Literal[
+        "recommendations_ready",
+        "escalation_required",
+        "safety_review_required",
+    ]
+    steps: list[str] = Field(min_length=1)
+    requires_human: bool
+    resolution_applied: bool = False
+    diagnostic_information: dict = Field(default_factory=dict)
+    safety_reason: str | None = None
+    message: str = (
+        "Recommendations only. No changes were made to IT systems."
     )
-    priority: Literal["low", "medium", "high", "critical"] = Field(
-        description="Assigned incident priority"
-    )
-    summary: str = Field(
-        min_length=1,
-        description="Clear summary of the reported problem"
-    )
-    requires_human: bool = Field(
-        description="Whether the incident requires human intervention"
-    )
-    recommended_action: str = Field(
-        min_length=1,
-        description="Recommended next troubleshooting or escalation step"
-    )
-    confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence in the triage result, from 0 to 1"
-    )
+
+
+class ResolutionPlan(BaseModel):
+    incident_id: str
+    explanation: str
+    steps: list[str] = Field(min_length=1)
+    evidence: list[str] = Field(default_factory=list)
+    requires_human_approval: bool = True
+
+
+class EvaluationResult(BaseModel):
+    approved: bool
+    feedback: str
+    missing_evidence: list[str] = Field(default_factory=list)

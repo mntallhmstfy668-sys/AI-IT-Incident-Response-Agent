@@ -1,114 +1,121 @@
-
+﻿
 import re
-from typing import Optional
+
+from models.schemas import IncidentReport
 
 
-# Requests that may expose passwords or other sensitive credentials.
-CREDENTIAL_PATTERNS = [
-    r"\bpassword\b",
-    r"\bpassphrase\b",
-    r"\bsecret key\b",
-    r"\bprivate key\b",
-    r"\baccess token\b",
-    r"\bapi key\b",
+BLOCKED_INPUT_PATTERNS = [
+    r"\bpassword\s*[:=]",
+    r"\bpasscode\s*[:=]",
+    r"\b(?:api[_ -]?key|secret[_ -]?key)\s*[:=]",
+    r"\b(?:ignore|bypass|disable)\b.{0,50}\b(?:security|guardrails|safety)\b",
 ]
 
-
-# Phrases that may indicate an attempt to override agent instructions.
-PROMPT_INJECTION_PATTERNS = [
-    r"\bignore (all )?(previous|prior) instructions\b",
-    r"\bdisregard (all )?(previous|prior) instructions\b",
-    r"\breveal (your )?(system prompt|hidden instructions)\b",
-    r"\bignore your safety rules\b",
-]
-
-
-# Actions that should never be performed automatically.
 UNSAFE_ACTION_PATTERNS = [
-    r"\bdelete all (user )?accounts\b",
-    r"\bdisable (all )?security controls\b",
-    r"\bdisable (all )?firewalls\b",
-    r"\bdelete (all )?backups\b",
-    r"\bexfiltrate\b",
+    r"\bdisable\s+(?:firewall|antivirus|security)\b",
+    r"\bdelete\s+(?:all\s+)?(?:logs|backups|audit records)\b",
+    r"\bexfiltrat\w*\b",
+    r"\bshutdown\s+(?:all\s+)?servers\b",
 ]
 
 
-def _contains_pattern(text: str, patterns: list[str]) -> bool:
-    """Return True if the text matches any configured safety pattern."""
-    return any(
-        re.search(pattern, text, flags=re.IGNORECASE)
-        for pattern in patterns
+def validate_incident_input(
+    incident: IncidentReport,
+) -> tuple[bool, str]:
+    """Reject incident descriptions containing sensitive data patterns."""
+    for pattern in BLOCKED_INPUT_PATTERNS:
+        if re.search(
+            pattern,
+            incident.description,
+            re.IGNORECASE,
+        ):
+            return False, "Input rejected by security guardrails."
+
+    return True, "Input passed security checks."
+
+
+def is_high_risk_incident(
+    incident: IncidentReport,
+) -> bool:
+    """Identify incidents that always require human review."""
+    return (
+        incident.priority == "critical"
+        or incident.category == "security"
     )
-
-
-def check_input_safety(text: str) -> tuple[bool, Optional[str]]:
-    """
-    Check an incoming user request for common safety risks.
-
-    Returns:
-        A tuple containing (is_safe, reason).
-    """
-    if not text or not text.strip():
-        return False, "The request is empty."
-
-    if _contains_pattern(text, PROMPT_INJECTION_PATTERNS):
-        return False, "The request may contain a prompt injection attempt."
-
-    if _contains_pattern(text, UNSAFE_ACTION_PATTERNS):
-        return False, "The request contains a potentially unsafe IT action."
-
-    if _contains_pattern(text, CREDENTIAL_PATTERNS):
-        return (
-            False,
-            "The request mentions credentials or secrets. "
-            "Do not request or expose sensitive authentication data.",
-        )
-
-    return True, None
-
-
-def check_output_safety(text: str) -> tuple[bool, Optional[str]]:
-    """
-    Check an agent response before returning it to the user.
-
-    This is a basic pattern-based check, not a complete security guarantee.
-    """
-    if not text or not text.strip():
-        return False, "The response is empty."
-
-    if _contains_pattern(text, UNSAFE_ACTION_PATTERNS):
-        return False, "The response may recommend an unsafe IT action."
-
-    if _contains_pattern(text, CREDENTIAL_PATTERNS):
-        return False, "The response may expose or request sensitive credentials."
-
-    return True, None
 
 
 def requires_human_approval(
-    action: str,
-    priority: str = "medium",
+    incident: IncidentReport,
+    triage=None,
+    diagnostic_result=None,
 ) -> bool:
-    """
-    Require human review for critical incidents and sensitive actions.
-    """
-    normalized_action = action.lower()
-    normalized_priority = priority.lower()
-
-    sensitive_actions = [
-        "delete",
-        "disable security",
-        "reset password",
-        "change permissions",
-        "close security incident",
-        "modify firewall",
-        "disable account",
-    ]
-
-    if normalized_priority == "critical":
+    """Require human approval for high-risk incidents or agent findings."""
+    if is_high_risk_incident(incident):
         return True
 
-    return any(
-        phrase in normalized_action
-        for phrase in sensitive_actions
-    )
+    if triage is not None:
+        if getattr(triage, "requires_human", False):
+            return True
+
+        if getattr(triage, "priority", "") == "critical":
+            return True
+
+        if getattr(triage, "category", "") == "security":
+            return True
+
+    if diagnostic_result is not None:
+        if getattr(diagnostic_result, "requires_human", False):
+            return True
+
+        if isinstance(diagnostic_result, dict):
+            if diagnostic_result.get("requires_human", False):
+                return True
+
+            if diagnostic_result.get("requires_human_approval", False):
+                return True
+
+            if diagnostic_result.get("priority") == "critical":
+                return True
+
+            if diagnostic_result.get("category") == "security":
+                return True
+
+    return False
+
+
+def validate_recommended_action(
+    action: str,
+) -> tuple[bool, str]:
+    """Block recommendations that contain explicitly unsafe actions."""
+    for pattern in UNSAFE_ACTION_PATTERNS:
+        if re.search(pattern, action, re.IGNORECASE):
+            return (
+                False,
+                "Recommendation blocked. Obtain authorized human review.",
+            )
+
+    return True, "Recommendation passed safety checks."
+
+
+def check_output_safety(
+    output: str,
+) -> tuple[bool, str]:
+    """Check generated agent output before returning it."""
+    return validate_recommended_action(output)
+
+
+def validate_resolution_claim(
+    resolution_applied: bool,
+    evidence: list[str],
+) -> tuple[bool, str]:
+    """Prevent claiming a resolution without supporting evidence."""
+    if resolution_applied and not evidence:
+        return (
+            False,
+            "Resolution claim rejected because no supporting evidence was provided.",
+        )
+
+    if resolution_applied:
+        return True, "Resolution claim has supporting evidence."
+
+    return True, "Recommendation only; no resolution claimed."
