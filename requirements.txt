@@ -1,5 +1,6 @@
-openai-agents
-gradio
-python-dotenv
-pydantic
-pytest
+streamlit>=1.40.0
+openai-agents>=0.2.9
+openai>=1.60.0
+pydantic>=2.8.0
+python-dotenv>=1.0.1
+ 
