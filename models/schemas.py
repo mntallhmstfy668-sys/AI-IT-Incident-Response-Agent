@@ -1,78 +1,38 @@
-﻿from typing import Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field
-
-
-IncidentCategory = Literal[
-    "network",
-    "account",
-    "device",
-    "vpn",
-    "security",
-    "other",
-]
-
-IncidentPriority = Literal[
-    "low",
-    "medium",
-    "high",
-    "critical",
-]
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class IncidentReport(BaseModel):
-    incident_id: str = Field(min_length=1, max_length=50)
-    description: str = Field(min_length=5, max_length=2000)
-    category: IncidentCategory = "other"
-    priority: IncidentPriority = "medium"
-    affected_user: str = "unknown"
+class StrictOutputModel(BaseModel):
+    # Closed objects make generated JSON schemas easier for providers to validate.
+    model_config = ConfigDict(extra="forbid")
 
 
-class TriageResult(BaseModel):
-    incident_id: str
-    category: IncidentCategory
-    priority: IncidentPriority
+class TriageResult(StrictOutputModel):
+    category: Literal["account", "network", "device", "security", "unknown"]
+    severity: Literal["low", "medium", "high", "critical"]
     summary: str
-    requires_human: bool
-    recommended_action: str
-    confidence: float = Field(ge=0, le=1)
+    affected_system: str
+    needs_human_review: bool
 
 
-class DiagnosticResult(BaseModel):
-    incident_id: str
-    category: IncidentCategory
-    checks: list[str] = Field(default_factory=list)
-    findings: list[str] = Field(default_factory=list)
-    recommended_next_step: str
-    automated_changes_performed: bool = False
+class InvestigationPlan(StrictOutputModel):
+    specialists: list[Literal["account", "network", "device"]]
+    reason: str
 
 
-class TroubleshootingResult(BaseModel):
-    incident_id: str
-    status: Literal[
-        "recommendations_ready",
-        "escalation_required",
-        "safety_review_required",
-    ]
-    steps: list[str] = Field(min_length=1)
-    requires_human: bool
-    resolution_applied: bool = False
-    diagnostic_information: dict = Field(default_factory=dict)
-    safety_reason: str | None = None
-    message: str = (
-        "Recommendations only. No changes were made to IT systems."
-    )
+class GuardrailDecision(StrictOutputModel):
+    allowed: bool
+    reason: str
 
 
-class ResolutionPlan(BaseModel):
-    incident_id: str
-    explanation: str
-    steps: list[str] = Field(min_length=1)
-    evidence: list[str] = Field(default_factory=list)
-    requires_human_approval: bool = True
-
-
-class EvaluationResult(BaseModel):
-    approved: bool
-    feedback: str
-    missing_evidence: list[str] = Field(default_factory=list)
+class IncidentReport(StrictOutputModel):
+    severity: Literal["low", "medium", "high", "critical"]
+    route: Literal["normal investigation", "human review"]
+    human_review: bool
+    summary: str
+    findings: list[str]
+    recommendations: list[str]
+    safety_note: str
+    audit_log: list[str]
+﻿ 
