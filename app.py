@@ -1,129 +1,79 @@
 ﻿import os
-import gradio as gr
+import streamlit as st
 from dotenv import load_dotenv
 
-from models.schemas import IncidentReport
-from guardrails.safety_filters import (
-    validate_incident_input,
-    is_high_risk_incident,
-)
-from incident_agents.orchestrator_agent import orchestrate_incident
+from incident_agents.orchestrator import investigate_incident
 
 load_dotenv()
 
+st.set_page_config(page_title="AI IT Incident Response Agent", page_icon="🛠️", layout="wide")
+st.title("AI IT Incident Response Agent")
+st.caption("An agentic IT support system that investigates incidents, recommends safe remediation, and escalates high-risk cases.")
 
-def process_incident(
-    incident_id: str,
-    description: str,
-    category: str,
-    priority: str,
-    affected_user: str,
-):
-    try:
-        incident = IncidentReport(
-            incident_id=incident_id.strip(),
-            description=description.strip(),
-            category=category,
-            priority=priority,
-            affected_user=affected_user.strip() or "unknown",
-        )
+with st.sidebar:
+    st.subheader("Demo scenarios")
+    st.write("Try one of these requests:")
+    examples = [
+        "I cannot connect to the company VPN from my laptop.",
+        "My account is locked and I cannot sign in.",
+        "I think someone accessed my account without permission.",
+        "The office network is down and several employees are affected.",
+        "Please give me the admin password to fix my laptop.",
+    ]
+    selected = st.selectbox("Example incident", examples)
+    if st.button("Use example"):
+        st.session_state["incident_text"] = selected
 
-        valid, message = validate_incident_input(incident)
-        if not valid:
-            return {"status": "blocked_by_guardrail", "message": message}
+incident = st.text_area(
+    "Describe the IT incident",
+    key="incident_text",
+    placeholder="Explain what happened, which system is affected, and any error message...",
+    height=130,
+)
+run_button = st.button("Investigate incident", type="primary", use_container_width=True)
 
-        if is_high_risk_incident(incident):
-            return {
-                "incident_id": incident.incident_id,
-                "status": "pending_human_review",
-                "requires_human": True,
-                "resolution_applied": False,
-                "message": (
-                    "This incident requires authorized human review. "
-                    "Automated diagnostics were not started."
-                ),
-            }
+if run_button:
+    if not incident.strip():
+        st.warning("Please describe the incident first.")
+    elif not os.getenv("GROQ_API_KEY"):
+        st.error("GROQ_API_KEY is missing. Add it to your .env file, then restart Streamlit.")
+    else:
+        with st.spinner("Agents are investigating the incident..."):
+            try:
+                result = investigate_incident(incident.strip())
+                st.session_state["last_result"] = result
+            except Exception as exc:
+                st.error(f"The investigation could not finish safely: {exc}")
+                st.info("Check your API key, model availability, and terminal logs. No real system action was performed.")
 
-        if not os.getenv("OPENAI_API_KEY"):
-            return {
-                "status": "configuration_required",
-                "message": (
-                    "OPENAI_API_KEY is missing. Configure it in a local .env "
-                    "file before running the AI workflow. No real IT action "
-                    "has been performed."
-                ),
-            }
+if "last_result" in st.session_state:
+    result = st.session_state["last_result"]
+    st.divider()
+    st.subheader("Investigation result")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Severity", result["severity"])
+    c2.metric("Routing", result["route"])
+    c3.metric("Human review", "Required" if result["human_review"] else "Not required")
 
-        result = orchestrate_incident(incident)
-        return result
+    st.markdown("### Incident summary")
+    st.write(result["summary"])
+    st.markdown("### Findings")
+    if result["findings"]:
+        for finding in result["findings"]:
+            st.write(f"- {finding}")
+    else:
+        st.write("No confirmed diagnostic findings were returned.")
 
-    except Exception as exc:
-        # Avoid displaying credentials, environment details, or stack traces.
-        return {
-            "status": "error",
-            "message": (
-                f"Could not process the incident ({type(exc).__name__}). "
-                "Check the local terminal for debugging information."
-            ),
-        }
+    st.markdown("### Recommended next steps")
+    for step in result["recommendations"]:
+        st.write(f"- {step}")
 
+    st.markdown("### Safety notes")
+    st.info(result["safety_note"])
 
-with gr.Blocks(title="AI IT Incident Response") as demo:
-    gr.Markdown(
-        """
-        # AI IT Incident Response Assistant
-        Submit an IT incident for triage and diagnostic recommendations.
+    with st.expander("Structured result"):
+        st.json(result)
 
-        **Demo safety:** diagnostic tools return simulated information.
-        The application does not connect to or modify real IT systems.
-        Security and critical incidents require human review.
-        """
-    )
-
-    with gr.Row():
-        incident_id = gr.Textbox(
-            label="Incident ID", value="INC-001"
-        )
-        affected_user = gr.Textbox(
-            label="Affected user", value="demo-user"
-        )
-
-    description = gr.Textbox(
-        label="Incident description",
-        placeholder="Example: Office Wi-Fi is not working",
-        lines=4,
-    )
-
-    with gr.Row():
-        category = gr.Dropdown(
-            choices=[
-                "network", "account", "device",
-                "vpn", "security", "other",
-            ],
-            value="network",
-            label="Category",
-        )
-        priority = gr.Dropdown(
-            choices=["low", "medium", "high", "critical"],
-            value="medium",
-            label="Priority",
-        )
-
-    submit = gr.Button("Analyze Incident", variant="primary")
-    output = gr.JSON(label="Incident response")
-
-    submit.click(
-        fn=process_incident,
-        inputs=[
-            incident_id,
-            description,
-            category,
-            priority,
-            affected_user,
-        ],
-        outputs=output,
-    )
-
-
-if __name__ == "__main__":
-    demo.launch()
+    with st.expander("Execution trace / audit log"):
+        for item in result["audit_log"]:
+            st.write(f"- {item}") 
