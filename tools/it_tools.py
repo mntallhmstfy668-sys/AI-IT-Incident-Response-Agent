@@ -1,92 +1,58 @@
-﻿from agents import function_tool
+from agents import function_tool
 
-
-# DEMO ONLY: these tools return simulated data.
-# They do not access real company systems or change configurations.
-
+# Demo-only data. Replace these deterministic mock checks with approved internal IT APIs.
+# The tools do not access real accounts, devices, networks, or ticketing systems.
 
 @function_tool
-def check_account_status(username: str) -> str:
-    """Check a simulated IT account status for a username."""
-    return (
-        f"DEMO DATA: Account '{username}' is enabled. "
-        "No real account system was queried."
-    )
-
+def check_account_status(employee_id: str = "DEMO-001") -> str:
+    """Check a demo employee account status. Never request or return passwords or tokens."""
+    return "Demo account status: active; failed_sign_ins_last_hour=2; password_reset_required=false."
 
 @function_tool
-def check_vpn_status(username: str) -> str:
-    """Check simulated VPN connectivity for a user."""
-    return (
-        f"DEMO DATA: VPN status for '{username}' is unknown. "
-        "Ask the user for the error message and connection time. "
-        "No real VPN system was queried."
-    )
-
+def check_vpn_status(location: str = "office") -> str:
+    """Check the demo VPN service status for a location."""
+    return "Demo VPN status: operational; authentication_service=operational; known_outage=false."
 
 @function_tool
-def check_device_status(device_name: str) -> str:
-    """Check simulated device health information."""
-    return (
-        f"DEMO DATA: Device '{device_name}' has not been queried in a real system. "
-        "Verify power, connectivity, recent updates, and error messages."
-    )
-
+def check_device_status(device_name: str = "employee-laptop") -> str:
+    """Check a demo device's health summary."""
+    return "Demo device status: online; disk_space=adequate; endpoint_protection=enabled; reboot_pending=false."
 
 @function_tool
-def check_network_status(location: str) -> str:
-    """Check simulated network status for a location."""
-    return (
-        f"DEMO DATA: No live network telemetry is available for '{location}'. "
-        "Check whether multiple users are affected and verify approved monitoring tools."
-    )
-
+def check_network_status(location: str = "office") -> str:
+    """Check the demo network status for a location."""
+    return "Demo network status: operational; packet_loss=0.2%; known_outage=false."
 
 @function_tool
 def search_it_knowledge(query: str) -> str:
-    """Search a small built-in demo IT knowledge base."""
+    """Search a small built-in IT knowledge base for safe troubleshooting guidance."""
     q = query.lower()
-
-    if any(word in q for word in ("wifi", "wi-fi", "network", "internet")):
-        return (
-            "Knowledge article: Network troubleshooting. "
-            "Check scope of impact, connection status, known outages, "
-            "and error timestamps. Escalate suspected widespread outages."
-        )
-
-    if any(word in q for word in ("vpn", "remote access")):
-        return (
-            "Knowledge article: VPN troubleshooting. "
-            "Confirm internet access, capture the exact error, "
-            "check approved VPN service status, and escalate repeated failures."
-        )
-
-    if any(word in q for word in ("password", "account", "login", "sign in")):
-        return (
-            "Knowledge article: Account access. "
-            "Confirm the username and error message through approved procedures. "
-            "Never ask the user to share their password or authentication codes."
-        )
-
-    if any(word in q for word in ("security", "phishing", "unauthorized", "suspicious")):
-        return (
-            "Knowledge article: Security incident. "
-            "Escalate promptly to the authorized security team. "
-            "Do not automatically close the incident or perform unapproved changes."
-        )
-
-    return (
-        "No exact demo article found. Collect symptoms, timestamps, scope, "
-        "and error messages, then consult the organization's approved IT knowledge base."
-    )
-
+    if "vpn" in q:
+        return "VPN guidance: confirm internet access, reconnect to the approved VPN client, check service status, then contact IT if the issue persists. Never ask for credentials."
+    if "account" in q or "sign in" in q or "login" in q or "locked" in q:
+        return "Account guidance: use the official password-reset flow and verify account status with IT. Never share passwords, one-time codes, or recovery tokens."
+    if "network" in q or "internet" in q:
+        return "Network guidance: check whether the issue affects one device or multiple users, verify Wi-Fi/Ethernet connection, and check the approved network status page."
+    if "device" in q or "laptop" in q:
+        return "Device guidance: save work, check power/connectivity, record any error message, and use approved endpoint support procedures."
+    if "security" in q or "suspicious" in q or "unauthorized" in q or "phishing" in q:
+        return "Security guidance: do not investigate by opening suspicious links. Preserve relevant details and escalate to the security/IT team immediately."
+    return "Knowledge base: collect the exact error message, affected service, approximate start time, and whether other users are affected. Escalate if impact is broad or security-related."
 
 @function_tool
-def create_incident_ticket(
-    incident_id: str, summary: str, priority: str
-) -> str:
-    """Prepare a simulated ticket record without creating a real ticket."""
-    return (
-        f"DEMO TICKET PREPARED: {incident_id}; priority={priority}; "
-        f"summary={summary[:300]}. No external ticket was created."
-    )
+def create_support_ticket(title: str, description: str, priority: str) -> str:
+    """Create a simulated support ticket after safe validation. This demo tool does not create a real ticket."""
+    allowed = {"low", "medium", "high", "critical"}
+    if priority.lower() not in allowed:
+        return "Ticket blocked: priority must be low, medium, high, or critical."
+    if not title.strip() or not description.strip():
+        return "Ticket blocked: title and description are required."
+    return f"SIMULATED TICKET CREATED: IT-DEMO-1042 | priority={priority.lower()} | title={title[:100]}"
+
+@function_tool
+def request_human_review(reason: str, incident_summary: str) -> str:
+    """Record a simulated human-review request. This does not contact a real person."""
+    if not reason.strip() or not incident_summary.strip():
+        return "Review request blocked: reason and incident summary are required."
+    return f"HUMAN REVIEW REQUIRED (simulated): reason={reason[:200]}; incident={incident_summary[:300]}"
+﻿ 
