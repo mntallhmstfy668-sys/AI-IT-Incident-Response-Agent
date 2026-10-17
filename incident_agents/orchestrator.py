@@ -6,7 +6,6 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-
 import asyncio
 
 from agents import (
@@ -65,15 +64,9 @@ triage_agent = Agent(
         "Classify an employee IT incident. Return a structured TriageResult. "
         "Choose category from account, network, device, security, unknown. "
         "Choose severity from low, medium, high, critical. "
-        "Critical means suspected compromise, active attack, or an outage affecting many employees. "
-        "High is rare: only for a business-critical system down for a team or department. "
-        "Medium means one employee is blocked from working, even with several ordinary "
-        "problems at once (locked account, VPN, slow device). "
-        "Low means a minor inconvenience. "
-        "Use category security ONLY for signs of unauthorized access, malware, phishing, "
-        "or data theft. A locked account, forgotten password, VPN failure or slow device "
-        "is NOT security by itself. "
-        "Set needs_human_review true only for critical severity or category security. "
+        "Critical means suspected compromise, active attack, or widespread outage. "
+        "High means major impact. Medium means an employee is blocked. "
+        "Low means minor inconvenience. Security incidents require human review. "
         "Never ask for passwords, OTPs, or secrets."
     )
     + json_instruction(TriageResult),
@@ -209,14 +202,6 @@ def _run_structured(agent, prompt, model_cls, session=None, attempts=2):
     )
 
 
-def _guardrail_reason(exc):
-    try:
-        info = exc.guardrail_result.output.output_info
-        return getattr(info, "reason", None) or str(info)
-    except Exception:
-        return "unknown reason"
-
-
 def _blocked_report(reason):
     return {
         "severity": "high",
@@ -251,9 +236,9 @@ def investigate_incident(user_text: str) -> dict:
         # 1. Input guardrail runs before triage.
         try:
             triage = _run_structured(triage_agent, user_text, TriageResult)
-        except InputGuardrailTripwireTriggered as exc:
+        except InputGuardrailTripwireTriggered:
             return _blocked_report(
-                f"Input guardrail: {_guardrail_reason(exc)}"
+                "The input safety guardrail rejected the request."
             )
 
         audit.append(
@@ -411,10 +396,11 @@ def investigate_incident(user_text: str) -> dict:
                 session,
             )
             audit.append("Output guardrail passed.")
-        except OutputGuardrailTripwireTriggered as exc:
-            reason = _guardrail_reason(exc)
-            audit.append(f"Output guardrail blocked the report: {reason}")
-            return _blocked_report(f"Output guardrail: {reason}")
+        except OutputGuardrailTripwireTriggered:
+            audit.append("Output guardrail blocked the generated report.")
+            return _blocked_report(
+                "The final report did not pass the output safety guardrail."
+            )
 
         report = report_model.model_dump()
         report["audit_log"] = audit
